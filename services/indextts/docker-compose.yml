@@ -1,0 +1,119 @@
+# 独立 IndexTTS GPU 推理服务。
+#
+# 起停：
+#   docker network create wxbot-gpu      # 仅首次；app 容器也加入此网络以便按容器名互访
+#   cd services/indextts && docker compose up -d --build
+#
+# 与仓库根 docker-compose.yml（app 业务服务）是**两个独立的 compose project**，
+# 互不影响。本服务全机只应存在一个实例 —— 它持有唯一的 GPU 热模型（约 7.8GB 显存）。
+#
+# 本文件全篇使用同一个 ${HOST_ROOT}（默认即本机仓库路径）。改机器时只改这一处。
+
+name: indextts
+
+# 宿主仓库根。下面所有 ${HOST_ROOT:-...} 都指向它，改机器时只需覆盖这一个变量。
+x-host-root: &host-root ${HOST_ROOT:-/home/hip/桌面/work/general_server}
+
+services:
+  indextts:
+    build:
+      context: ../..
+      dockerfile: services/indextts/Dockerfile
+      args:
+        # 必须与下面的挂载路径逐字一致：镜像要用它把 venv 的 bin 挂进 PATH
+        HOST_ROOT: *host-root
+    image: indextts-server:2.0.0
+    # 固定容器名：生产 Node 容器经共享网络用 http://indextts-server:8000 访问
+    container_name: indextts-server
+    restart: unless-stopped
+    # 收到 SIGTERM 后 uvicorn 会拒绝新提交并把排队任务标记为 interrupted；
+    # CUDA 推理无法安全打断，在途任务只能跑完或被杀，故给 20s 缓冲。
+    stop_grace_period: 20s
+
+    # 密钥单独放 .env（已 gitignore），绝不写进 compose 或镜像
+    env_file:
+      - path: ./.env
+        required: false
+
+    environment:
+      # ---- 引擎路径：必须是宿主绝对路径，且与下面的挂载点逐字一致 ----
+      # 用于定位 checkpoints（权重）与 indextts 源码包
+      INDEXTTS_INSTALL_DIR: ${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/indextts/engine
+      # 桥接层（镜像内） + 引擎源码（挂载进来，供 `import indextts`）
+      PYTHONPATH: /opt/indextts/bridge:${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/indextts/engine
+
+      # 启动即加载：避免部署后首个请求干等 1-3 分钟冷启动
+      INDEXTTS_EAGER_LOAD: "true"
+      INDEXTTS_STATE_DIR: /var/lib/indextts
+      INDEXTTS_MAX_QUEUE: "64"
+      # 单次请求文本上限。**必须与 Node 侧 .env 的 INDEXTTS_MAX_TEXT_CHARS 一致**
+      # （.env.development / .env.production）。注意这里只能用 compose 的 environment：
+      # environment 优先级高于 env_file，所以 .env 里写同名键不会生效。
+      INDEXTTS_MAX_TEXT_CHARS: "5000"
+      INDEXTTS_MAX_UPLOAD_MB: "20"
+      INDEXTTS_RESULT_TTL_MS: "1800000"
+      INDEXTTS_EXPOSE_TRACE: "false"
+      # 绝不自动下载权重：缺失时给出可读清单，而不是在用户请求里拉几个 GB
+      INDEXTTS_ALLOW_DOWNLOAD: "false"
+      INDEXTTS_USE_FP16: "true"
+      # 显式绑定 0 号卡（宿主只有一张 3080），并声明需要 compute 能力
+      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    ports:
+      # 只绑回环：开发机上的 Node 进程走 127.0.0.1:39010；
+      # 生产 Node 在容器里，走共享网络的 indextts-server:8000，不经宿主端口。
+      - "127.0.0.1:39010:8000"
+
+    volumes:
+      # engine 目录（含 .venv 与 checkpoints，约 22GB）整体挂载，路径与宿主完全一致 ——
+      # venv 内 python 的符号链接与 bin/* 的 shebang 都是绝对路径，换路径即断链。
+      # 只读：容器不该改宿主上这份被开发环境共用的依赖与权重。
+      # 注意 checkpoints 就在 engine 之下，因此无需单独挂权重。
+      - ${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/indextts/engine:${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/indextts/engine:ro
+      # uv 安装的 Python 运行时：venv 的 python 符号链接指向这里，同样必须同路径
+      - ${UV_PYTHON_DIR:-/home/hip/.local/share/uv/python}:${UV_PYTHON_DIR:-/home/hip/.local/share/uv/python}:ro
+      # 参考音临时文件 + 合成产物 + job 注册表（可写）
+      - indextts-state:/var/lib/indextts
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # torch 多进程/DataLoader 需要足够的 /dev/shm，否则可能 bus error
+    shm_size: "2gb"
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # 冷启动加载模型 1-3 分钟，别让它在这期间被判定为不健康而反复重启
+      start_period: 600s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+    networks:
+      - wxbot-gpu
+
+volumes:
+  indextts-state:
+
+networks:
+  wxbot-gpu:
+    external: true

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="content">
+        <div class="left">
+            <img src="./asset/img2.png" class="people p-animtion" alt="人物插图">
+            <img src="./asset/img1.png" class="sphere s-animtion" alt="球体装饰">
+        </div>
+        <div class="right">
+            <!-- <div class="top">
+                <div class="top-item">
+                    <span class="top-text">登录</span>
+                </div>
+                <div class="top-item">
+                    <span class="top-text">注册</span>
+                </div>
+                <div class="top-item">
+                    <span class="top-text">联系我们</span>
+                </div>
+                <div class="top-item">
+                    <span class="top-text">帮助</span>
+                </div>
+            </div> -->
+            <div class="form-wrappepr" id="login-form">
+                <h1>进入小屋</h1>
+                <input type="text" id="login-account" class="inputs user" placeholder="请输入邮箱或手机号">
+                <input type="password" id="login-password" class="inputs pwd" placeholder="请输入密码">
+                <span  id="login-error" style="color:#e74c3c; min-height:18px;"></span>
+                <div class="tips-box">
+                <span class="tips"><span class="switch-to-recover" style="color: rgb(68, 96, 241); cursor: pointer;">找回密码</span></span>
+                <span class="tips">还没账号？<span class="switch-to-register" style="color: rgb(68, 96, 241); cursor: pointer;">去注册</span></span>
+
+                </div>
+                <button id="login-btn">登 录</button>
+                <!-- <div class="other-login">
+                    <div class="divider">
+                        <span class="line"></span>
+                        <span class="divider-text">或使用以下方式登录</span>
+                        <span class="line"></span>
+                    </div>
+                    <div class="other-login-wrapper">
+                        <div class="other-login-item">
+                            <img src="./asset/QQ.png" alt="QQ 登录">
+                        </div>
+                        <div class="other-login-item">
+                            <img src="./asset/WeChat.png" alt="微信登录">
+                        </div>
+                    </div>
+                </div> -->
+            </div>
+            <div class="form-wrappepr" id="register-form" style="display: none;">
+                <h1>注册新账号</h1>
+                <input type="text" id="register-account" class="inputs user" placeholder="请输入邮箱或手机号">
+                <input type="password" id="register-password" class="inputs pwd" placeholder="请设置密码">
+                <input type="password" id="register-confirm" class="inputs pwd" placeholder="请确认密码">
+                <div class="tips-box">
+                    <span class="tips" id="register-error" style="color:#e74c3c; min-height:18px;"></span>
+                    <span class="tips"></span>
+                    <span class="tips">已有账号？<span class="switch-to-login" style="color: rgb(68, 96, 241); cursor: pointer;">去登录</span></span>
+                </div>
+                <button id="register-btn">注 册</button>
+                <!-- <div class="other-login">
+                    <div class="divider">
+                        <span class="line"></span>
+                        <span class="divider-text">或使用以下方式注册</span>
+                        <span class="line"></span>
+                    </div>
+                    <div class="other-login-wrapper">
+                        <div class="other-login-item">
+                            <img src="./asset/QQ.png" alt="QQ 登录">
+                        </div>
+                        <div class="other-login-item">
+                            <img src="./asset/WeChat.png" alt="微信登录">
+                        </div>
+                    </div>
+                </div> -->
+            </div>
+            <div class="form-wrappepr" id="recover-form" style="display: none;">
+                <h1>找回密码</h1>
+                <input type="text" class="inputs user" placeholder="请输入邮箱或手机号">
+                <div class="code-input">
+                    <input type="text" class="inputs" placeholder="请输入验证码">
+                    <button type="button" class="send-code-btn">发送验证码</button>
+                </div>
+                <input type="password" class="inputs pwd" placeholder="请输入新密码">
+                <div class="tips-box">
+                    <span class="tips"></span>
+                    <span class="tips">想起来了？<span class="switch-to-login" style="color: rgb(68, 96, 241); cursor: pointer;">去登录</span></span>
+                </div>
+                <button>重置密码</button>
+            </div>
+
+        </div>
+    </div>
+</body>
+<script>
+    document.querySelector(".people").addEventListener('animationend', function () {
+        this.classList.remove('p-animtion');
+        this.classList.add('p-other-animtion')
+    });
+    document.querySelector(".sphere").addEventListener('animationend', function () {
+        this.classList.remove('s-animtion');
+        this.classList.add('s-other-animtion')
+    });
+
+    const forms = {
+        login: document.getElementById('login-form'),
+        register: document.getElementById('register-form'),
+        recover: document.getElementById('recover-form'),
+    };
+
+    function switchForm(name) {
+        Object.keys(forms).forEach(function (key) {
+            forms[key].style.display = key === name ? 'block' : 'none';
+        });
+    }
+
+    document.querySelectorAll('.switch-to-register').forEach(function (el) {
+        el.addEventListener('click', function () {
+            switchForm('register');
+        });
+    });
+    document.querySelectorAll('.switch-to-login').forEach(function (el) {
+        el.addEventListener('click', function () {
+            switchForm('login');
+        });
+    });
+    document.querySelectorAll('.switch-to-recover').forEach(function (el) {
+        el.addEventListener('click', function () {
+            switchForm('recover');
+        });
+    });
+
+    // ---- 认证 API ----
+
+    // 从 URL 读取 redirect：redirect 可能是完整 URL，仅放行可信跳转目标
+    // - 相对路径（同源）
+    // - 完整 URL：与登录页同源；或登录页本身在回环地址（开发环境）且目标也是回环地址
+    //   （前端 Vite dev server 与后端不同端口/主机）
+    // 挡掉 //evil.com、/\evil.com、跨域公网与 javascript: 等开放重定向
+    function getSafeRedirect() {
+        var r = new URLSearchParams(window.location.search).get('redirect');
+        if (!r) return null;
+        // 相对路径：以 / 开头且非 // 或 /\ 开头的协议相对写法
+        if (/^\/(?!\/|\\)/.test(r)) return r;
+        // 完整 URL：仅允许 http/https
+        var u;
+        try {
+            u = new URL(r, window.location.origin);
+        } catch (e) {
+            return null;
+        }
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+        // 同源直接放行
+        if (u.origin === window.location.origin) return u.href;
+        // 跨源仅放行回环地址互跳（开发环境：登录页与前端 dev server 分属不同端口）
+        if (isLoopback(window.location.hostname) && isLoopback(u.hostname)) {
+            return u.href;
+        }
+        return null;
+    }
+
+    function isLoopback(hostname) {
+        return hostname === 'localhost' || hostname === '127.0.0.1' ||
+            hostname === '::1' || hostname === '[::1]' ||
+            hostname.endsWith('.localhost');
+    }
+
+    // 从 JWT 解析过期时间（秒），用于 cookie 有效期；解析失败给默认值
+    function tokenMaxAge(token) {
+        try {
+            var b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+            var exp = Number(JSON.parse(atob(b64)).exp);
+            if (exp) {
+                var ttl = exp - Math.floor(Date.now() / 1000);
+                return ttl > 0 ? ttl : 0;
+            }
+        } catch (e) {}
+        return 7 * 24 * 60 * 60;
+    }
+
+    // 将 token 写入 cookie（key=token），供前端 JS 鉴权读取
+    function setTokenCookie(token) {
+        document.cookie = 'token=' + encodeURIComponent(token) + '; path=/; max-age=' + tokenMaxAge(token) + '; sameSite=Lax';
+    }
+
+    function setFormMessage(id, text, isError) {
+        var el = document.getElementById(id);
+        el.textContent = text;
+        el.style.color = isError === false ? '#2ecc71' : '#e74c3c';
+    }
+
+    async function apiPost(url, body) {
+        var res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        var json;
+        try {
+            json = await res.json();
+        } catch (e) {
+            throw new Error('网络错误，请稍后重试');
+        }
+        if (json.code !== 200) {
+            throw new Error(json.msg || '请求失败');
+        }
+        return json.data;
+    }
+
+    document.getElementById('login-btn').addEventListener('click', async function () {
+        var account = document.getElementById('login-account').value.trim();
+        var password = document.getElementById('login-password').value;
+        if (!account || !password) {
+            setFormMessage('login-error', '请输入账号和密码', true);
+            return;
+        }
+        try {
+            // 登录成功后把 token 写入 cookie（key=token），供前端鉴权读取，再重定向
+            var data = await apiPost('/hip/auth/login', { account: account, password: password });
+            if (data && data.token) {
+                setTokenCookie(data.token);
+            }
+            window.location.href = getSafeRedirect() || '/hip/';
+        } catch (err) {
+            setFormMessage('login-error', err.message, true);
+        }
+    });
+
+    document.getElementById('register-btn').addEventListener('click', async function () {
+        var account = document.getElementById('register-account').value.trim();
+        var password = document.getElementById('register-password').value;
+        var confirm = document.getElementById('register-confirm').value;
+        if (!account || !password || !confirm) {
+            setFormMessage('register-error', '请填写完整信息', true);
+            return;
+        }
+        if (password !== confirm) {
+            setFormMessage('register-error', '两次输入的密码不一致', true);
+            return;
+        }
+        try {
+            await apiPost('/hip/auth/register', { account: account, password: password });
+            setFormMessage('login-error', '注册成功，请登录', false);
+            switchForm('login');
+        } catch (err) {
+            setFormMessage('register-error', err.message, true);
+        }
+    });
+</script>
+
+</html>

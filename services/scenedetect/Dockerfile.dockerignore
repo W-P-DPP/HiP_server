@@ -1,0 +1,28 @@
+# 构建上下文裁剪（配合 services/scenedetect/Dockerfile 的 COPY services/scenedetect/... 路径）。
+#
+# 为什么单独一份：compose 的 build.context 是仓库根目录（../..），若用仓库根的
+# .dockerignore 会连带影响 app 镜像；这里只裁剪本服务构建时**不需要**的东西。
+#
+# engine/ 是宿主侧的 venv（本地 CLI 调试用），依赖已装进镜像，绝不能进构建上下文。
+services/scenedetect/engine
+services/scenedetect/__pycache__
+services/scenedetect/http/__pycache__
+services/scenedetect/logs
+services/scenedetect/.env
+
+node_modules
+dist
+logs
+uploads
+.runtime
+data
+.git
+.claude
+.commandcode
+.vscode
+__tests__
+docs
+wx
+mcp
+public
+type

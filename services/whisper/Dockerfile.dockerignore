@@ -1,0 +1,35 @@
+# 供 services/whisper/Dockerfile 使用（BuildKit 会优先读 <Dockerfile>.dockerignore，
+# 因此本文件不会影响仓库根 Dockerfile 构建 app 镜像的语义）。
+#
+# 构建上下文是仓库根，而本服务的引擎目录含宿主 venv 与数 GB 权重。
+# 不排除的话每次 docker compose build 都要把它们 tar 进上下文。
+# 镜像只需要**桥接层源码**（whisper_engine.py / run_whisper.py / http/），
+# venv 与权重由 compose 只读挂载。
+
+# ---- 引擎目录：虚拟环境与权重不进上下文 ----
+services/whisper/engine/.venv
+services/whisper/engine/models
+services/whisper/engine
+
+# ---- 桥接层运行期产物 ----
+services/whisper/__pycache__
+services/whisper/http/__pycache__
+services/whisper/logs
+services/whisper/.env
+
+# ---- 仓库其余部分：本镜像一概不用 ----
+node_modules
+dist
+logs
+uploads
+.runtime
+.git
+.claude
+.commandcode
+.vscode
+__tests__
+docs
+wx
+mcp
+public
+type

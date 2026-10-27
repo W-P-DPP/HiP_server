@@ -1,0 +1,70 @@
+name: scenedetect
+
+x-host-root: &host-root ${HOST_ROOT:-/home/hip/桌面/work/general_server}
+
+services:
+  scenedetect:
+    build:
+      context: ../..
+      dockerfile: services/scenedetect/Dockerfile
+    image: scenedetect-server:1.0.0
+    container_name: scenedetect-server
+    restart: unless-stopped
+
+    # 共享密钥（SCENEDETECT_API_TOKEN）。可选：文件不存在也能起（此时接口无鉴权）。
+    env_file:
+      - path: ./.env
+        required: false
+
+    environment:
+      SCENEDETECT_SERVICE_PORT: "8000"
+      # 纯 CPU 逐帧分析，并发只会互相拖慢，默认 1（与 Node 侧 AI_DETECT_CONCURRENCY 一致）
+      SCENEDETECT_MAX_CONCURRENCY: "1"
+      # 可选：只允许检测某个目录下的视频（留空 = 不限）。默认留空 —— 下面挂了**两个**路径
+      # （生产 /app/uploads + 开发 <仓库>/uploads），单一 root 会把另一种形态误拒；
+      # 真实约束由「只绑回环 + Bearer token」承担。真要收紧时按当前部署形态二选一。
+      # SCENEDETECT_ALLOWED_ROOT: /app/uploads
+
+    # 端口只绑宿主回环（indextts 39010 / whisper 39020 / vlm 39030 之后的下一号）
+    ports:
+      - "127.0.0.1:39040:8000"
+
+    # ⚠️ 判读前提：Node 侧 detectScenes 会把**视频的绝对路径**原样发过来，而本机**开发与生产
+    #    共用这一个 scenedetect 容器**，因此下面两条路径必须同时可达 —— 只挂一份，另一种形态
+    #    就会报「输入视频不存在」：
+    #      - 生产：app 跑在容器里，cwd=/app ⇒ /app/uploads/...
+    #              ← 宿主 <HOST_ROOT>/uploads（HOST_ROOT = 生产检出目录，本机由 Jenkins 部署，
+    #                即 /var/lib/jenkins/workspace/HiP_server；deploy.sh 会 export 它）
+    #      - 开发：app 跑在宿主，cwd=仓库根 ⇒ <仓库>/uploads/...
+    #              ← 宿主 <DEV_HOST_ROOT>/uploads **按原样路径**挂入（缺省即本仓库检出路径）
+    #    两者相同时（纯开发或纯生产）也安全：目标路径不同，不会重复挂载。
+    volumes:
+      - ${HOST_ROOT}/uploads:/app/uploads:ro
+      - ${DEV_HOST_ROOT:-/home/hip/桌面/work/general_server}/uploads:${DEV_HOST_ROOT:-/home/hip/桌面/work/general_server}/uploads:ro
+
+    healthcheck:
+      # 探 /healthz（进程存活）。本服务无模型加载，启动即就绪，start_period 短。
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+    # 与 app 共用外部网络，app 内以容器名 scenedetect-server:8000 访问
+    networks:
+      - wxbot-gpu
+
+networks:
+  # 由 services/indextts/docker-compose.yml 首次创建：docker network create wxbot-gpu
+  wxbot-gpu:
+    external: true

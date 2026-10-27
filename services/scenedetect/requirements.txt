@@ -1,0 +1,12 @@
+# PySceneDetect 场景切分（CPU，无 GPU 依赖）
+#
+# 生产走独立 HTTP 容器（services/scenedetect/Dockerfile），依赖直接装进镜像。
+#
+# scenedetect 0.6 起不再默认拉取 OpenCV（帧读取后端），必须显式安装；
+# 服务端用 headless 版，避免拖入 GUI 相关的系统库。
+scenedetect==0.6.6
+opencv-python-headless
+
+# HTTP 服务（与 services/vlm、services/whisper 同栈）
+fastapi
+uvicorn

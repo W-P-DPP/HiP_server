@@ -1,0 +1,101 @@
+# 独立 duix/HeyGem 数字人（对口型）服务。
+#
+# 起停：
+#   docker network create wxbot-gpu      # 仅首次；app 容器也加入此网络
+#   cd services/heygem && docker compose up -d
+#
+# 与仓库根 docker-compose.yml（app 业务服务）是**两个独立的 compose project**，
+# 与 services/indextts 同构。本服务只做「音频 + 参考视频 → 口型视频」，
+# 业务侧（任务队列、文件落库、归属校验）全部留在 Node 侧。
+#
+# 与 services/indextts 的唯一区别：这里用上游预构建镜像（约 15GB），本目录不含 Dockerfile，
+# 编排与文档之外不需要任何构建产物。
+#
+# 全机只应存在一个实例 —— duix 会占用自有的 GPU 上下文，且与本仓库的 IndexTTS 服务
+# 共用同一张卡（实测 duix 约 3.2GB + IndexTTS 峰值约 8GB，20GB 卡余量充足）。
+
+name: heygem
+
+services:
+  duix:
+    image: guiji2025/duix.avatar
+    # 固定容器名：生产 Node 容器经共享网络 wxbot-gpu 用
+    # http://duix-avatar-gen-video:8383 访问；开发机 Node 在宿主上走回环。
+    container_name: duix-avatar-gen-video
+    restart: unless-stopped
+
+    # 上游镜像不带 ENTRYPOINT/CMD —— 不显式指定会以
+    # 「no command specified」启动失败。这是该镜像的本地版入口。
+    command: python /code/app_local.py
+
+    # 上游镜像的硬要求：内部直接用 CUDA，需要 nvidia 运行时与特权。
+    runtime: nvidia
+    privileged: true
+
+    environment:
+      # 减少显存碎片（与 IndexTTS 共用一张卡）
+      PYTORCH_CUDA_ALLOC_CONF: max_split_size_mb:512
+
+    volumes:
+      # **最关键的一项**：与 Node 侧共享的素材卷。
+      #
+      # duix 不接收 HTTP 上传 —— 它只从挂载目录里读 tasks/<code>/audio.wav 与 model.mp4，
+      # 产物也写回同一目录（temp/、result/）。因此 Node 侧写入的目录必须与这里指向同一份数据。
+      #
+      # 这里挂全局命名卷 wxbot-heygem-data（根 docker-compose.yml 把同一卷挂到
+      # /app/services/heygem/data）。**不要改回 ./data 之类的相对绑定挂载**：相对路径按各自
+      # compose 文件所在目录解析，Jenkins workspace（/var/lib/jenkins/workspace/...）与
+      # 开发检出会落成不同宿主机目录，Node 写入的 audio.wav 对 duix 不可见，任务立刻报
+      # 「三次获取音频时长失败」（线上已踩过此坑）。
+      - wxbot-heygem-data:/code/data
+
+    ports:
+      # 只绑回环：开发机上的 Node 进程走 127.0.0.1:8383；
+      # 生产 Node 在容器里，走共享网络的 duix-avatar-gen-video:8383，不经宿主端口。
+      - "127.0.0.1:8383:8383"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # torch 多进程/OpenCV 需要足够的 /dev/shm，否则可能 bus error
+    shm_size: "8g"
+
+    healthcheck:
+      # 上游没有独立健康路由，用查询接口做探针：任何 HTTP 响应都算存活
+      # （查询不存在的 code 会返回 10004，那也是「服务在响应」）。
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8383/easy/query?code=health_probe', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # 入口 app_local.py 里有 sleep(15) + 模型初始化，别让它在这期间被判不健康
+      start_period: 180s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+    networks:
+      - wxbot-gpu
+
+volumes:
+  # 显式 name：否则会被加上本 compose 的项目名前缀（heygem_），与根 docker-compose.yml
+  # 的卷分裂成两个不同的卷。两个 compose project 靠这个名字共享同一份素材。
+  wxbot-heygem-data:
+    name: wxbot-heygem-data
+
+networks:
+  # 与独立 IndexTTS GPU 服务、app 容器共用，由 services/indextts/docker-compose.yml 创建
+  # 一次性执行：docker network create wxbot-gpu
+  wxbot-gpu:
+    external: true

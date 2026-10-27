@@ -1,0 +1,47 @@
+# 本地图片理解（Qwen3-VL）服务的 Python 依赖。
+#
+# 装进**宿主侧**的 services/vlm/engine/.venv（由 Dockerfile 只读挂载复用），不在镜像内安装 ——
+# 理由与 services/whisper 一致：国际带宽不稳，复用已装好的 venv 可零下载、无版本漂移。
+#
+#   uv venv --python 3.12 --python-preference only-managed engine/.venv
+#   uv pip install --python engine/.venv/bin/python -r requirements.txt
+#
+# `--python-preference only-managed` 不是可选项：容器里不装 Python，靠 compose 把
+# ~/.local/share/uv/python 按原路径挂进去复用；用系统解释器（或 python3 -m venv）
+# 建的 venv 其 bin/python 指向 /usr/bin/python3.12，容器里没有 → 启动即
+# `exec: "python": executable file not found in $PATH`。详见 README 的「安装」。
+
+# ---- 推理栈 ----
+# torch 用 PyPI 默认 wheel（自带 CUDA 运行库），故基础镜像用 -base 变体即可，
+# 不需要 cudnn-runtime；也不需要像 whisper 那样手工 RTLD_GLOBAL 预加载 cublas。
+torch>=2.6,<3.0
+
+# 4.57.0 是 Qwen3-VL 的支持下限：Qwen3-VL 于 2025-09-15 合入 transformers，
+# 更早的版本没有 Qwen3VLForConditionalGeneration / Qwen3VLProcessor。
+transformers>=4.57.0
+
+accelerate>=1.0            # from_pretrained(device_map=...) 需要
+bitsandbytes>=0.43         # NF4 4bit 量化
+safetensors>=0.4
+pillow>=10.0
+
+# torchvision 是**必须**的，别被"我们只做图片"误导：
+# AutoProcessor.from_pretrained 会把 processor config 里列出的子处理器**全部**构造出来，
+# 其中包括 Qwen3VLVideoProcessor —— 它硬依赖 torchvision。缺了会在加载处理器时报
+#   ImportError: Qwen3VLVideoProcessor requires the Torchvision library but it was not found
+# （而且那条 ImportError 的消息拼装方式导致详情容易看漏，实测为此困惑过一轮）。
+# 版本不要固定：必须与 torch 的版本/CI 构建匹配，交给解析器决定。
+torchvision
+
+# 刻意不装 qwen-vl-utils：transformers 4.57 起的 AutoProcessor 已能直接吃 messages 里的
+# image 字段（见 README 的实测记录），多一个包只会多一处版本冲突面。
+
+# ---- HTTP 适配层 ----
+fastapi>=0.115.0,<1.0
+uvicorn[standard]>=0.30.0,<1.0
+
+# FastAPI 解析 multipart（图片上传）必需；缺了会在导入期直接报错
+python-multipart>=0.0.9
+
+# /api/v1/status 的显存读数（轻量，不引入额外框架）
+nvidia-ml-py>=12.0.0

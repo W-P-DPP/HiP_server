@@ -1,0 +1,31 @@
+# 本地 Whisper ASR 服务的 Python 依赖。
+#
+# 装进**宿主侧**的 services/whisper/engine/.venv（由 Dockerfile 只读挂载复用），
+# 不在镜像内安装 —— 理由见 Dockerfile 顶部的「依赖策略」注释。
+#
+#   uv venv --python 3.12 engine/.venv
+#   uv pip install --python engine/.venv/bin/python -r requirements.txt
+#
+# 刻意不装 torch：推理栈是 faster-whisper / CTranslate2，torch 只被 /api/v1/status 用来
+# 读显存，而那个功能已改用轻量的 pynvml（见 http/server.py 的 _gpu_info）。
+# 少一个 torch 就少约 2.5GB 依赖。
+
+# 核心推理：内置 CTranslate2 引擎。GPU 运行需要 cuBLAS + cuDNN 9
+faster-whisper>=1.1.0,<2.0
+
+# CTranslate2 **不自带** CUDA 运行库，而宿主上通常也没有系统级 CUDA —— 用 pip 包补齐。
+# 这两个包装到 site-packages/nvidia/<lib>/lib/，不在动态链接器的默认搜索路径上，
+# 因此 whisper_engine.preload_cuda_libraries() 会显式 RTLD_GLOBAL 预加载它们。
+# 容器里同样靠这份 venv（compose 只读挂载），所以基础镜像不必须是 cudnn-runtime。
+nvidia-cublas-cu12>=12.4,<13
+nvidia-cudnn-cu12>=9.1,<10
+
+# HTTP 适配层
+fastapi>=0.115.0,<1.0
+uvicorn[standard]>=0.30.0,<1.0
+
+# FastAPI 解析 multipart（音频上传）必需；缺了会在导入期直接报错
+python-multipart>=0.0.9
+
+# /api/v1/status 的显存读数（不引入 torch 的代价）
+nvidia-ml-py>=12.0.0

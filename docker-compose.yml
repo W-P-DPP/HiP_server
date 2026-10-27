@@ -1,0 +1,108 @@
+name: HiP-server
+
+services:
+  # ==================== 应用服务（hip-server） ====================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hip-server:latest
+    container_name: hip-server
+    restart: unless-stopped
+    # 系统监控接口（GET /hip/api/system/resources）的 gpu 字段靠容器内执行 nvidia-smi 获取。
+    # 用 nvidia 运行时 + 只申请 utility 能力：app 自身不做 CUDA 计算、不占显存，
+    # 只是让 toolkit 把 nvidia-smi 与 libnvidia-ml.so 注入进容器（否则接口恒返回空数组）。
+    runtime: nvidia
+    ports:
+      - "40010:40010"
+    # depends_on:
+    #   HiP:
+    #     condition: service_healthy
+    #   redis:
+    #     condition: service_healthy
+    environment:
+      # 覆盖镜像内 .env.production 的 127.0.0.1 地址，指向容器网络中的依赖服务
+      # NODE_ENV: production
+      # PORT: 40010
+      # REDIS_HOST: redis
+      # REDIS_PORT: 6379
+
+      # ---- IndexTTS GPU 服务（独立 compose project：services/indextts）----
+      # 只在此覆盖两项地址：.env.production 里是开发机的 127.0.0.1，容器内不可达。
+      # dotenv 不覆盖已存在的环境变量，因此这里的值优先。
+      # INDEXTTS_API_TOKEN 不在此注入 —— 它由镜像内的 .env.production 提供（容器启动时
+      # dotenv 读到），值需与 services/indextts/.env 一致，否则 GPU 服务一律返回 401。
+      # 注：compose 的 ${VAR} 插值只认 shell 环境变量与根目录 .env，读不到 .env.production，
+      # 所以这里写 ${INDEXTTS_API_TOKEN:?} 只会让构建期硬失败，起不到注入作用。
+      # 需先 `docker network create wxbot-gpu`，且 GPU 服务已在该网络中运行。
+      INDEXTTS_MODE: remote
+      INDEXTTS_BASE_URL: http://indextts-server:8000
+      # ---- scenedetect（PySceneDetect 场景切分，纯 CPU 独立容器）----
+      # 只覆盖地址：==.env.production== 里已是 scenedetect-server:8000，这里显式写出便于换机器。
+      # token（SCENEDETECT_API_TOKEN）不在此注入 —— 由镜像内 .env.production 提供，
+      # 且必须与 services/scenedetect/.env 一致，deploy.sh 会自动同步。
+      SCENEDETECT_BASE_URL: http://scenedetect-server:8000
+      # ---- 图片理解（Qwen3-VL，独立 GPU 容器）----
+      # 只覆盖地址：==.env.production== 里是开发机的 127.0.0.1，容器内不可达
+      # （会解析成 app 容器自身 → fetch failed / ECONNREFUSED 127.0.0.1:39030）。
+      # token（VLM_API_TOKEN）不在此注入 —— 由镜像内 .env.production 提供，
+      # 且必须与 services/vlm/.env 一致，否则接口一律 401。
+      VLM_MODE: remote
+      VLM_BASE_URL: http://vlm-server:8000
+      # ---- 数字人（duix/HeyGem 对口型）----
+      # duix 容器与本服务处于同一网络时用服务名直连；否则改成宿主机可达地址。
+      HEYGEM_BASE_URL: http://duix-avatar-gen-video:8383
+      # **必须与 duix 容器挂载的宿主机目录一致**：本容器把宿主机 ./services/heygem/data
+      # 挂到 /app/services/heygem/data（见下方 volumes），services/heygem/docker-compose.yml
+      # 把同一宿主机目录挂到 /code/data，二者才会指向同一份文件，否则容器读不到
+      # 音频/参考视频，任务立刻失败。
+      HEYGEM_MOUNT_DIR: /app/services/heygem/data
+      HEYGEM_CONTAINER_PREFIX: /code/data
+      # GPU 监控：绑定宿主 0 号卡（与 indextts/heygem 共用一张卡），声明 utility 能力。
+      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_DRIVER_CAPABILITIES: utility
+      # 其余密钥（JWT_SECRET / XUNFEI_* / MAILER_* 等）读取镜像内 .env.production；
+      # 如需避免密钥写入镜像，可在上方 environment 中显式覆盖（dotenv 不会覆盖已存在的环境变量）
+    volumes:
+      # 上传文件与日志持久化
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      # RSA 密码解密私钥：只读挂入 /app/keys（与 .env.production 的 RSA_PRIVATE_KEY_PATH 对应）。
+      # 私钥只在宿主机 ./keys/rsa_private.pem，不进仓库（.gitignore）也不进镜像（.dockerignore），
+      # 故每次部署前需先把密钥文件放到宿主机的 ./keys 下，否则登录/注册会返回「服务端密码解密密钥不可用」。
+      - ./keys:/app/keys:ro
+      # 数字人共享卷：duix 容器（services/heygem/docker-compose.yml）把**同一个命名卷**
+      # 挂到 /code/data，见 HEYGEM_MOUNT_DIR。
+      #
+      # 用全局命名卷而非 ./services/heygem/data 绑定挂载：绑定挂载按各自 compose 文件所在
+      # 目录解析，Jenkins workspace、开发检出、手工 compose 很容易落在不同宿主机目录，
+      # 于是 Node 写入的 tasks/<code>/audio.wav 对 duix 不可见，任务立刻报
+      # 「三次获取音频时长失败」。命名卷与检出位置无关，两侧必然是同一份数据。
+      - wxbot-heygem-data:/app/services/heygem/data
+    networks:
+      - default
+      # 与 indextts-server 互通（该网络由 services/indextts/docker-compose.yml 使用；
+      # 两个 compose project 共享它，故声明为 external）
+      - wxbot-gpu
+    healthcheck:
+      # 应用无 / 路由会返回 404（wget 视为错误导致误报 unhealthy），改为探测 HTTP 服务是否响应
+      test: ["CMD", "node", "-e", "const r=require('http').get('http://localhost:40010/',res=>{res.resume();process.exit(res.statusCode?0:1)});r.on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  uploads:
+  logs:
+  # redis-data:
+  # 与 services/heygem/docker-compose.yml 共用的数字人素材卷。显式 name 是关键：
+  # 不带 name 的卷会被加上各自 compose 项目名前缀（HiP-server_ / heygem_），两侧就分裂了。
+  wxbot-heygem-data:
+    name: wxbot-heygem-data
+
+networks:
+  # 与独立的 IndexTTS GPU 服务共用，由 services/indextts/docker-compose.yml 创建
+  # 一次性执行：docker network create wxbot-gpu
+  wxbot-gpu:
+    external: true

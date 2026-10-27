@@ -1,0 +1,62 @@
+node_modules
+
+logs
+
+
+# 上传文件目录（保留目录结构）
+uploads/*
+!uploads/.gitkeep
+
+
+dist
+
+llm
+
+*.test.*
+
+# IndexTTS2 引擎与权重（数 GB，不随仓库分发；由运维在目标机器上安装）
+services/indextts/engine/
+
+# 独立 GPU 服务的密钥（INDEXTTS_API_TOKEN）——只提交 .env.example
+services/indextts/.env
+services/indextts/logs/
+
+# Whisper ASR 服务与权重（宿主 venv + faster-whisper 权重，数 GB；由运维在目标机器上安装）
+services/whisper/engine/
+
+# 独立 GPU 服务的密钥（WHISPER_API_TOKEN）——只提交 .env.example
+services/whisper/.env
+services/whisper/logs/
+
+# 独立 scenedetect 服务的密钥（SCENEDETECT_API_TOKEN）——只提交 .env.example
+services/scenedetect/.env
+services/scenedetect/logs/
+
+# Qwen3-VL 图片理解服务与权重（宿主 venv + torch + 模型权重，数 GB；由运维在目标机器上安装）
+services/vlm/engine/
+
+# 独立 GPU 服务的密钥（VLM_API_TOKEN）——只提交 .env.example
+services/vlm/.env
+services/vlm/logs/
+
+# IndexTTS worker 运行期产物（JSON 配置与合成临时文件）
+.runtime/
+
+# 数字人与 duix 容器共享的素材目录（音频/参考视频/产物中转，运行期数据）
+# 目录由 services/heygem/docker-compose.yml 挂载给 duix，故保留 .gitkeep 让目录随检出存在
+services/heygem/data/*
+!services/heygem/data/.gitkeep
+
+# Python 字节码缓存（services/indextts 的桥接脚本由 Python 解释器生成）
+__pycache__/
+*.pyc
+
+.commandcode
+.claude
+
+# RSA 密码解密私钥（仅运维在目标机器放置，不随仓库分发；公钥在前端常量里）
+keys/*
+!keys/.gitkeep
+
+.env.development
+.env.production

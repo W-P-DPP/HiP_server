@@ -1,0 +1,44 @@
+# 供 services/indextts/Dockerfile 使用（BuildKit 会优先读 <Dockerfile>.dockerignore，
+# 因此本文件不会影响仓库根 Dockerfile 构建 app 镜像的语义）。
+#
+# 构建上下文是仓库根，而 IndexTTS 引擎目录约 22GB（.venv 8.2G + checkpoints 14G）。
+# 不排除的话每次 docker compose build 都要把它们 tar 进上下文，在开发机上无法忍受。
+# 镜像只需要引擎的**源码**（indextts/，28M）与依赖清单，权重由 compose 只读挂载。
+
+# ---- 引擎：权重与虚拟环境不进上下文 ----
+services/indextts/engine/.venv
+services/indextts/engine/venv
+services/indextts/engine/checkpoints
+services/indextts/engine/.git
+services/indextts/engine/.github
+
+# ---- 引擎：与本服务无关的上游资料 ----
+services/indextts/engine/archive
+services/indextts/engine/assets
+services/indextts/engine/docs
+services/indextts/engine/examples
+services/indextts/engine/tests
+services/indextts/engine/tools
+services/indextts/engine/webui.py
+services/indextts/engine/._____temp
+
+# ---- 桥接层运行期产物 ----
+services/indextts/__pycache__
+services/indextts/logs
+services/indextts/.env
+
+# ---- 仓库其余部分：本镜像一概不用 ----
+node_modules
+dist
+logs
+uploads
+.runtime
+.git
+.claude
+.vscode
+__tests__
+docs
+wx
+mcp
+public
+type

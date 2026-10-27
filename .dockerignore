@@ -1,0 +1,33 @@
+# 依赖与构建产物
+node_modules
+dist
+
+# 运行时数据
+logs
+uploads
+
+# duix 共享素材目录（运行期音频/视频中转，最大可达数十 MB~GB，构建不需要）
+services/heygem/data
+
+# 本地大体积资源（模型/素材等，构建不需要）
+llm
+
+# Git / IDE / 文档
+.git
+.gitignore
+.claude
+docs
+__tests__
+*.test.*
+
+# 本地配置文件
+tsconfig.tsbuildinfo
+config copy.json
+
+# 环境变量（保留 .env.production 打入镜像供运行时加载）
+.env
+.env.development
+.env.test
+
+# RSA 密码解密私钥（不进构建上下文与镜像层；运行时由 docker-compose 只读挂载）
+keys

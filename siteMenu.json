@@ -1,0 +1,70 @@
+
+[
+    {
+        "id": 1,
+        "name": "置顶",
+        "path": "/1/port",
+        "isTop":true,
+        "icon": "/icons/pin.svg",
+        "children": [
+            {
+                "id": 11,
+                "name": "端口映射",
+                "path": "/my-resume",
+                "icon": "icon-path"
+            }
+        ]
+    },
+     {
+        "id": 2,
+        "name": "git",
+        "path": "/2/port",
+        "isTop":false,
+        "icon": "/icons/git.svg",
+        "children": [
+            {
+                "id": 21,
+                "name": "端口映射",
+                "path": "/my-resume",
+                "icon": "icon-path"
+            }
+        ]
+    },
+     {
+        "id": 3,
+        "name": "工具",
+        "path": "/icons/tool.svg",
+        "isTop":false,
+        "icon": "/icons/tool.svg",
+        "children": [
+            {
+                "id": 31,
+                "name": "JSON解析",
+                "path": "https://www.json.cn/",
+                "icon": "/icons/json.ico"
+            },
+            {
+                "id": 32,
+                "name": "二维码生成",
+                "path": "https://cli.im/",
+                "icon": "/icons/qr.ico"
+            }
+        ]
+    },
+    {
+        "id": 4,
+        "name": "应用",
+        "path": "",
+        "isTop":false,
+        "icon": "/icons/app.svg",
+        "children": [
+             {
+                "id": 41,
+                "name": "日志记录",
+                "path": "https://www.zwpsite.icu/date-logger/",
+                "icon": "/icons/log-color.svg"
+            }
+        ]
+    }
+   
+]

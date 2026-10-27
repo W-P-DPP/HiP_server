@@ -1,0 +1,33 @@
+{
+    "expires_in":7200,
+    "log": {
+        "rotate": true,
+        "datePattern": "YYYY-MM-DD",
+        "maxFiles": "365d"
+    },
+    "axios":{
+        "baseURL":"https://api.weixin.qq.com/cgi-bin/",
+        "timeout":5000
+    },
+    "Redis":{
+        "host":"127.0.0.1",
+        "port":6379
+    },
+    "Database":{
+        "host":"127.0.0.1",
+        "user":"root",
+        "password":"123456",
+        "database":"wxbot",
+        "port":3306,
+        "connectionLimit":10,
+        "waitForConnections":true,
+        "queueLimit":0,
+        "timezone": "+08:00",
+        "charset": "utf8mb4"
+
+    },
+    "agent":{
+        "baseURL":"https://yz-api-xai.yingzi.com/v1",
+        "key":"sk-XvsRvhFPlO2elHVug83zSH7JfTifTqgWEd7itjiBtFZ3hdgP"
+    }
+}

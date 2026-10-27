@@ -1,0 +1,117 @@
+# 独立 Whisper ASR 推理服务。
+#
+# 起停：
+#   docker network create wxbot-gpu      # 仅首次；app 容器也加入此网络以便按容器名互访
+#   cd services/whisper && docker compose up -d --build
+#
+# 与仓库根 docker-compose.yml（app 业务服务）是**两个独立的 compose project**，互不影响。
+# 本服务持有 only-one 的 Whisper 热模型（large-v3 fp16 约 3GB 显存）。
+#
+# 本文件全篇使用同一个 ${HOST_ROOT}（默认即本机仓库路径）。改机器时只改这一处。
+
+name: whisper
+
+# 宿主仓库根。下面所有 ${HOST_ROOT:-...} 都指向它，改机器时只需覆盖这一个变量。
+x-host-root: &host-root ${HOST_ROOT:-/home/hip/桌面/work/general_server}
+
+services:
+  whisper:
+    build:
+      context: ../..
+      dockerfile: services/whisper/Dockerfile
+      args:
+        # 必须与下面的挂载路径逐字一致：镜像要用它把 venv 的 bin 挂进 PATH
+        HOST_ROOT: *host-root
+    image: whisper-server:1.0.0
+    # 固定容器名：生产 Node 容器经共享网络用 http://whisper-server:8000 访问
+    container_name: whisper-server
+    restart: unless-stopped
+    # 收到 SIGTERM 后 uvicorn 会拒绝新提交并把排队任务标记为 interrupted；
+    # 在途推理无法安全打断，故给 20s 缓冲。
+    stop_grace_period: 20s
+
+    # 密钥单独放 .env（已 gitignore），绝不写进 compose 或镜像
+    env_file:
+      - path: ./.env
+        required: false
+
+    environment:
+      # ---- 引擎路径：必须是宿主绝对路径，且与下面的挂载点逐字一致 ----
+      WHISPER_STATE_DIR: /var/lib/whisper
+      PYTHONPATH: /opt/whisper/bridge
+
+      # 启动即加载：避免部署后首个请求干等模型加载 + 首次 3GB 权重下载
+      WHISPER_EAGER_LOAD: "true"
+      WHISPER_MAX_QUEUE: "64"
+      WHISPER_MAX_UPLOAD_MB: "100"
+      WHISPER_RESULT_TTL_MS: "1800000"
+      WHISPER_EXPOSE_TRACE: "false"
+
+      # ---- 模型与设备（注意：compose 的 environment 优先级高于 env_file，
+      #      改 services/whisper/.env 里的同名键不会生效）----
+      WHISPER_MODEL: "large-v3"
+      WHISPER_DEVICE: "cuda"
+      WHISPER_COMPUTE_TYPE: "float16"
+      WHISPER_LANGUAGE: "zh"
+      # 首次允许从 hf-mirror 拉取 large-v3（约 3GB，落在命名卷，只下载一次）。
+      # 离线环境设为 "false"，届时缺失会给出可读的清单而不是静默失败。
+      WHISPER_ALLOW_DOWNLOAD: "true"
+      HF_ENDPOINT: https://hf-mirror.com
+      HUGGINGFACE_HUB_ENDPOINT: https://hf-mirror.com
+      # 镜像没有代理 Xet 的 CAS 存储（cas-server.xethub.hf.co），开着会 401 导致下载整体失败
+      HF_HUB_DISABLE_XET: "1"
+
+      # 显式绑定 0 号卡（与 IndexTTS / duix 共用），并声明需要 compute 能力
+      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    ports:
+      # 只绑回环：开发机上的 Node 进程走 127.0.0.1:39020；
+      # 生产 Node 在容器里，走共享网络的 whisper-server:8000，不经宿主端口。
+      - "127.0.0.1:39020:8000"
+
+    volumes:
+      # engine 目录（含宿主 venv）整体挂载，路径与宿主完全一致 ——
+      # venv 内 python 的符号链接与 bin/* 的 shebang 都是绝对路径，换路径即断链。
+      # 只读：容器不该改宿主上这份被开发环境共用的依赖。
+      - ${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/whisper/engine:${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/whisper/engine:ro
+      # uv 安装的 Python 运行时：venv 的 python 符号链接指向这里，同样必须同路径
+      - ${UV_PYTHON_DIR:-/home/hip/.local/share/uv/python}:${UV_PYTHON_DIR:-/home/hip/.local/share/uv/python}:ro
+      # 上传音频 + SRT 产物 + job 注册表 + **权重缓存**（可写，故权重不落在只读 engine 下）
+      - whisper-state:/var/lib/whisper
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # 冷启动含首次 3GB 权重下载，别让它在这期间被判定为不健康而反复重启
+      start_period: 900s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+    networks:
+      - wxbot-gpu
+
+volumes:
+  whisper-state:
+
+networks:
+  wxbot-gpu:
+    external: true

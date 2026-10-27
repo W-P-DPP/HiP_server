@@ -1,0 +1,67 @@
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  "compilerOptions": {
+    "verbatimModuleSyntax": true,
+      "experimentalDecorators": true,      // 启用实验性装饰器语法
+    "emitDecoratorMetadata": true,       // 发出装饰器元数据，用于反射
+    // File Layout
+    // "rootDir": "./src",
+    // "outDir": "./dist",
+
+    // Environment Settings
+    // See also https://aka.ms/tsconfig/module
+    "module": "nodenext",
+    "target": "esnext",
+    "types": [],
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    // For nodejs:
+    // "lib": ["esnext"],
+    // "types": ["node"],
+    // and npm install -D @types/node
+
+    // Other Outputs
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // Stricter Typechecking Options
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+
+    // Style Options
+    // "noImplicitReturns": true,
+    // "noImplicitOverride": true,
+    // "noUnusedLocals": true,
+    // "noUnusedParameters": true,
+    // "noFallthroughCasesInSwitch": true,
+    // "noPropertyAccessFromIndexSignature": true,
+
+    // Recommended Options
+    "strict": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "#/*": ["mcp/*"],
+      "@": ["src"],
+      "#": ["mcp"]
+    },
+  }
+  ,
+  "include": [
+    "src/**/*",
+    "utils/**/*",
+    "utils/*",
+    "utils/types/*.d.ts",
+    "config.json",
+    "mcp",
+    "type/*.d.ts", "wx/material/wxMaterial.controller.ts", "wx/material/wxMaterial.dto.ts", "wx/material/wxMaterial.entity.ts", "wx/material/wxMaterial.repository.ts", "wx/material/wxMaterial.router.ts", "wx/material/wxMaterial.service.ts", "wx/summary/*.ts", "wx/draft/*.ts",
+  ]
+}

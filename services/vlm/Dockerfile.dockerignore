@@ -1,0 +1,31 @@
+# 构建上下文裁剪（配合 services/vlm/Dockerfile 的 COPY services/vlm/... 路径）。
+#
+# 为什么单独一份：compose 的 build.context 是仓库根目录（../..），若用仓库根的
+# .dockerignore 会连带影响 app 镜像；这里只裁剪本服务构建时**不需要**的东西。
+#
+# engine/ 是宿主侧的 venv + 权重缓存（数 GB），绝不能进构建上下文：
+# 它由 compose 在运行时只读挂载，镜像里那份副本毫无用处。
+services/vlm/engine/.venv
+services/vlm/engine/models
+services/vlm/engine
+services/vlm/__pycache__
+services/vlm/http/__pycache__
+services/vlm/logs
+services/vlm/.env
+
+node_modules
+dist
+logs
+uploads
+.runtime
+data
+.git
+.claude
+.commandcode
+.vscode
+__tests__
+docs
+wx
+mcp
+public
+type

@@ -1,0 +1,113 @@
+name: vlm
+
+x-host-root: &host-root ${HOST_ROOT:-/home/hip/桌面/work/general_server}
+
+services:
+  vlm:
+    build:
+      context: ../..
+      dockerfile: services/vlm/Dockerfile
+      args:
+        HOST_ROOT: *host-root
+    image: vlm-server:1.0.0
+    container_name: vlm-server
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+    env_file:
+      - path: ./.env
+        required: false
+
+    environment:
+      VLM_STATE_DIR: /var/lib/vlm
+      PYTHONPATH: /opt/vlm/bridge
+
+      # 默认**不预热**：VLM 常驻实测约 3.3GB，而单卡 20GB 上 IndexTTS(~8G) + duix(~3.2G)
+      # + Whisper(~3G) 已占约 14GB，四者合计约 17.5GB —— 平时不占更稳妥（见 README「显存」）。
+      # 需要预热时改 true。
+      #
+      # 注意「不预热」只推迟**第一次加载的时机**，不改变「加载后常驻」：权重一旦进显存就会
+      # 一直占着。真正让出显存靠下面的 VLM_IDLE_UNLOAD_MS。
+      VLM_EAGER_LOAD: "false"
+      # 空闲多久后把模型从显存卸下来（ms）；0 = 不卸载（常驻到进程退出）。
+      # 代价：卸载后下一个任务要等一次冷加载（从磁盘读 ~3GB 权重，数十秒）。
+      # 若图片理解会被频繁调用（例如接了「场景关键帧批量理解」），把它设成 0 更划算。
+      VLM_IDLE_UNLOAD_MS: "600000"
+      VLM_MAX_QUEUE: "64"
+      VLM_MAX_UPLOAD_MB: "20"
+      VLM_RESULT_TTL_MS: "1800000"
+      VLM_EXPOSE_TRACE: "false"
+
+      VLM_MODEL: "Qwen/Qwen3-VL-4B-Instruct"
+      VLM_DEVICE: "cuda"
+      # sdpa 无额外依赖；装得起 flash-attn 时改 flash_attention_2 更省显存
+      VLM_ATTN: "sdpa"
+      VLM_LOAD_IN_4BIT: "true"
+      # 视觉 token 上下限 —— 显存占用的头号杠杆。max_pixels 放大 4 倍约等于视觉 token 放大 4 倍。
+      VLM_MIN_PIXELS: "3136"
+      VLM_MAX_PIXELS: "1003520"
+      # 单次生成的 token 上限 —— 「输出能写多长」的唯一实际约束（中文约 1 token ≈ 1 字）。
+      # 给足余量：太小会让 JSON 被拦腰截断（表现为「解析失败」，看着像模型的锅）。
+      # 2048 约合 1800 字描述、最坏耗时 1–2 分钟，远小于 Node 侧 VLM_JOB_TIMEOUT_MS。
+      VLM_MAX_NEW_TOKENS: "2048"
+      VLM_ALLOW_DOWNLOAD: "true"
+
+      HF_ENDPOINT: https://hf-mirror.com
+      HUGGINGFACE_HUB_ENDPOINT: https://hf-mirror.com
+      HF_HUB_DISABLE_XET: "1"
+      # 下载缓存（hub + hf_xet 的分片缓存）必须落在命名卷上，否则容器一重建就重下约 9GB。
+      # 与 vlm-state 卷同一路径；模型本体另由 vlm_engine 的 cache_dir 指到 $HF_HOME/models。
+      HF_HOME: /var/lib/vlm
+      # 关掉 torch 2.14 的 native-JIT 派发：它需要容器里有 C 编译器（triton 运行时编译），
+      # 否则 Qwen3-VL 的 RoPE 会报 "Failed to find C compiler"。详见 Dockerfile 的注释。
+      TORCH_DISABLE_NATIVE_JIT: "1"
+
+      # 只绑物理 0 号卡（与 indextts / duix / whisper 共用同一张）
+      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    ports:
+      - "127.0.0.1:39030:8000"
+
+    volumes:
+      - ${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/vlm/engine:${HOST_ROOT:-/home/hip/桌面/work/general_server}/services/vlm/engine:ro
+      - ${UV_PYTHON_DIR:-/home/hip/.local/share/uv/python}:${UV_PYTHON_DIR:-/home/hip/.local/share/uv/python}:ro
+      - vlm-state:/var/lib/vlm
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # 探 /healthz（进程存活）而不是 /readyz（模型就绪）——理由见 Dockerfile 的注释。
+      # 因为不预热，进程本身几秒内就绪，故 start_period 不需要 whisper 那样的 900s
+      # （那是给「启动即加载数 GB 权重」留的窗口）。
+      start_period: 60s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+    networks:
+      - wxbot-gpu
+
+volumes:
+  vlm-state:
+
+networks:
+  wxbot-gpu:
+    external: true
