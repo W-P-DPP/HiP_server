@@ -673,3 +673,6 @@ __tests__/
 - `services/indextts/.env`、`services/whisper/.env` 不入库，仅提交 `.env.example`。
 - duix 容器需要 `privileged: true`（上游镜像的硬要求），部署时请限制其网络暴露面
   （只绑宿主回环，仅经 `wxbot-gpu` 与 app 互通）。
+
+## 觉得有用的话可以请我喝杯咖啡
+![收款码](public/8b3044cf1c02c5a207208fbd552516a0.jpg)
